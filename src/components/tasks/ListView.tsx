@@ -235,15 +235,21 @@ export default function ListView({
       updated_at: new Date().toISOString(),
     };
 
-    // Auto-recalculate hours when planned or actual dates change
+    // Auto-recalculate hours from the same date group that was edited
     if (['planned_start', 'planned_end', 'actual_start', 'actual_end'].includes(field)) {
       const task = tasks.find(t => t.id === taskId);
       if (task) {
-        const start = field === 'planned_start' ? (stored as string) : task.planned_start;
-        const end = field === 'planned_end' ? (stored as string) : task.planned_end;
-        const aStart = field === 'actual_start' ? (stored as string) : task.actual_start;
-        const aEnd = field === 'actual_end' ? (stored as string) : task.actual_end;
-        const hours = calcHours(start, end) ?? calcHours(aStart, aEnd);
+        const isActual = field === 'actual_start' || field === 'actual_end';
+        let hours: number | null = null;
+        if (isActual) {
+          const aStart = field === 'actual_start' ? (stored as string) : task.actual_start;
+          const aEnd = field === 'actual_end' ? (stored as string) : task.actual_end;
+          hours = calcHours(aStart, aEnd);
+        } else {
+          const pStart = field === 'planned_start' ? (stored as string) : task.planned_start;
+          const pEnd = field === 'planned_end' ? (stored as string) : task.planned_end;
+          hours = calcHours(pStart, pEnd);
+        }
         if (hours !== null) updateData.estimated_hours = hours;
       }
     }

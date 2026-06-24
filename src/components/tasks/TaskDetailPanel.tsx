@@ -106,14 +106,20 @@ export default function TaskDetailPanel({ task, onClose, onUpdate }: Props) {
     const oldVal = (task as any)[field];
     const updateData: Record<string, any> = { [field]: value || null, updated_at: new Date().toISOString() };
 
-    // Auto-calculate hours when saving date fields
-    if (field === 'planned_start' || field === 'planned_end') {
-      const start = (field === 'planned_start' ? value : task.planned_start) ?? undefined;
-      const end = (field === 'planned_end' ? value : task.planned_end) ?? undefined;
-      const hours = calculateHours(start, end);
-      if (hours !== null) {
-        updateData.estimated_hours = hours;
+    // Auto-calculate hours from matching date group (planned or actual)
+    if (['planned_start', 'planned_end', 'actual_start', 'actual_end'].includes(field)) {
+      const isActual = field === 'actual_start' || field === 'actual_end';
+      let hours: number | null = null;
+      if (isActual) {
+        const aStart = (field === 'actual_start' ? value : task.actual_start) ?? undefined;
+        const aEnd = (field === 'actual_end' ? value : task.actual_end) ?? undefined;
+        hours = calculateHours(aStart, aEnd);
+      } else {
+        const pStart = (field === 'planned_start' ? value : task.planned_start) ?? undefined;
+        const pEnd = (field === 'planned_end' ? value : task.planned_end) ?? undefined;
+        hours = calculateHours(pStart, pEnd);
       }
+      if (hours !== null) updateData.estimated_hours = hours;
     }
 
     await supabase.from('tasks').update(updateData).eq('id', task.id);
@@ -138,8 +144,10 @@ export default function TaskDetailPanel({ task, onClose, onUpdate }: Props) {
     { label: 'Est. Hours', key: 'estimated_hours', type: 'number' as const },
   ];
 
-  // Calculate auto-hours for display
-  const autoHours = calculateHours(task.planned_start ?? undefined, task.planned_end ?? undefined);
+  // Prefer actual hours when actual dates are set, otherwise show planned hours
+  const autoHours =
+    calculateHours(task.actual_start ?? undefined, task.actual_end ?? undefined) ??
+    calculateHours(task.planned_start ?? undefined, task.planned_end ?? undefined);
 
   return (
     <div className="w-96 flex-shrink-0 border-l border-gray-200 bg-white flex flex-col h-full">
