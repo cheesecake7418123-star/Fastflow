@@ -1,5 +1,4 @@
 import { Task, Project, TaskStatus } from '../../types';
-import TaskStatusBadge from './TaskStatusBadge';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { Calendar, Trash2 } from 'lucide-react';
@@ -10,6 +9,7 @@ interface Props {
   onRefresh: () => void;
   onSelectTask: (task: Task) => void;
   filterProjectId?: string;
+  canEdit?: boolean;
 }
 
 const COLUMNS: { status: TaskStatus; label: string; headerCls: string; dotCls: string }[] = [
@@ -19,14 +19,16 @@ const COLUMNS: { status: TaskStatus; label: string; headerCls: string; dotCls: s
   { status: 'hold',  label: 'Hold',   headerCls: 'border-t-red-400',   dotCls: 'bg-red-400' },
 ];
 
-function formatDate(d: string | null | undefined) {
+function formatDateTime(d: string | null | undefined) {
   if (!d) return null;
-  return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const date = new Date(d);
+  if (isNaN(date.getTime())) return null;
+  return date.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-export default function BoardView({ projects, tasks, onRefresh, onSelectTask, filterProjectId }: Props) {
+export default function BoardView({ projects, tasks, onRefresh, onSelectTask, filterProjectId, canEdit: canEditProp }: Props) {
   const { profile } = useAuth();
-  const canEdit = profile?.role === 'admin' || profile?.role === 'manager';
+  const canEdit = canEditProp || profile?.role === 'admin' || profile?.role === 'manager';
 
   const visibleProjects = filterProjectId ? projects.filter(p => p.id === filterProjectId) : projects;
   const mainTasks = tasks.filter(t => !t.parent_task_id);
@@ -98,7 +100,7 @@ export default function BoardView({ projects, tasks, onRefresh, onSelectTask, fi
                     {(task.planned_start || task.planned_end) && (
                       <div className="flex items-center gap-1 text-xs text-gray-400">
                         <Calendar className="w-3 h-3" />
-                        {formatDate(task.planned_start)} {task.planned_end ? `→ ${formatDate(task.planned_end)}` : ''}
+                        {formatDateTime(task.planned_start)} {task.planned_end ? `→ ${formatDateTime(task.planned_end)}` : ''}
                       </div>
                     )}
                     {canEdit && (

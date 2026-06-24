@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { X, Clock } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { Project, Profile, TaskStatus } from '../../types';
@@ -9,6 +9,21 @@ interface Props {
   defaultProjectId?: string;
   onClose: () => void;
   onCreated: () => void;
+}
+
+function toISO(local: string): string | null {
+  if (!local) return null;
+  return new Date(local).toISOString();
+}
+
+function calculateHours(start: string, end: string): number | null {
+  if (!start || !end) return null;
+  const startDate = new Date(start);
+  const endDate = new Date(end);
+  if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) return null;
+  const diffMs = endDate.getTime() - startDate.getTime();
+  if (diffMs <= 0) return null;
+  return Math.round((diffMs / 3600000) * 10) / 10; // Round to 1 decimal
 }
 
 export default function AddTaskModal({ projects, defaultProjectId, onClose, onCreated }: Props) {
@@ -22,10 +37,28 @@ export default function AddTaskModal({ projects, defaultProjectId, onClose, onCr
   const [actualStart, setActualStart] = useState('');
   const [actualEnd, setActualEnd] = useState('');
   const [estimatedHours, setEstimatedHours] = useState('');
+  const [autoCalculatePlanned, setAutoCalculatePlanned] = useState(true);
+  const [autoCalculateActual, setAutoCalculateActual] = useState(true);
   const [assignedTo, setAssignedTo] = useState('');
   const [members, setMembers] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // Auto-calculated hours
+  const plannedHours = useMemo(() => {
+    if (!autoCalculatePlanned) return null;
+    return calculateHours(plannedStart, plannedEnd);
+  }, [plannedStart, plannedEnd, autoCalculatePlanned]);
+
+  const actualHours = useMemo(() => {
+    if (!autoCalculateActual) return null;
+    return calculateHours(actualStart, actualEnd);
+  }, [actualStart, actualEnd, autoCalculateActual]);
+
+  const displayHours = useMemo(() => {
+    const est = estimatedHours ? parseFloat(estimatedHours) : null;
+    return est ?? plannedHours ?? actualHours;
+  }, [estimatedHours, plannedHours, actualHours]);
 
   useEffect(() => {
     supabase.from('profiles').select('*').then(({ data }) => setMembers(data ?? []));
@@ -41,11 +74,11 @@ export default function AddTaskModal({ projects, defaultProjectId, onClose, onCr
       title: title.trim(),
       description: description.trim() || null,
       status,
-      planned_start: plannedStart || null,
-      planned_end: plannedEnd || null,
-      actual_start: actualStart || null,
-      actual_end: actualEnd || null,
-      estimated_hours: estimatedHours ? parseFloat(estimatedHours) : null,
+      planned_start: toISO(plannedStart),
+      planned_end: toISO(plannedEnd),
+      actual_start: toISO(actualStart),
+      actual_end: toISO(actualEnd),
+      estimated_hours: displayHours,
       assigned_to: assignedTo || null,
       created_by: user!.id,
     });
@@ -110,42 +143,106 @@ export default function AddTaskModal({ projects, defaultProjectId, onClose, onCr
               </select>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Planned Start</label>
-              <input type="date" value={plannedStart} onChange={e => setPlannedStart(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+
+          {/* Planned dates with auto-hours */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium text-gray-700">Planned Schedule</label>
+              <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={autoCalculatePlanned}
+                  onChange={e => setAutoCalculatePlanned(e.target.checked)}
+                  className="accent-blue-500"
+                />
+                Auto-calculate hours
+              </label>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Planned End</label>
-              <input type="date" value={plannedEnd} onChange={e => setPlannedEnd(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Start Date & Time</label>
+                <input
+                  type="datetime-local"
+                  value={plannedStart}
+                  onChange={e => setPlannedStart(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">End Date & Time</label>
+                <input
+                  type="datetime-local"
+                  value={plannedEnd}
+                  onChange={e => setPlannedEnd(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
             </div>
+            {plannedHours !== null && (
+              <div className="flex items-center gap-1.5 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                <Clock className="w-3 h-3" />
+                Auto-calculated: {plannedHours} hours
+              </div>
+            )}
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Actual Start</label>
-              <input type="date" value={actualStart} onChange={e => setActualStart(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+
+          {/* Actual dates with auto-hours */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium text-gray-700">Actual Schedule</label>
+              <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={autoCalculateActual}
+                  onChange={e => setAutoCalculateActual(e.target.checked)}
+                  className="accent-blue-500"
+                />
+                Auto-calculate hours
+              </label>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Actual End</label>
-              <input type="date" value={actualEnd} onChange={e => setActualEnd(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Start Date & Time</label>
+                <input
+                  type="datetime-local"
+                  value={actualStart}
+                  onChange={e => setActualStart(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">End Date & Time</label>
+                <input
+                  type="datetime-local"
+                  value={actualEnd}
+                  onChange={e => setActualEnd(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
             </div>
+            {actualHours !== null && (
+              <div className="flex items-center gap-1.5 text-xs text-emerald-600 bg-emerald-50 px-2 py-1 rounded">
+                <Clock className="w-3 h-3" />
+                Auto-calculated: {actualHours} hours
+              </div>
+            )}
           </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Est. Hours</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Est. Hours {displayHours !== null && <span className="text-blue-600 text-xs">({displayHours}h)</span>}
+              </label>
               <input
                 type="number"
                 value={estimatedHours}
                 onChange={e => setEstimatedHours(e.target.value)}
                 min="0"
                 step="0.5"
-                placeholder="0"
+                placeholder={displayHours !== null ? `${displayHours}` : '0'}
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
+              <p className="text-xs text-gray-400 mt-1">Leave empty to use auto-calculated</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Assign To</label>

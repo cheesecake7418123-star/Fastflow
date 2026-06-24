@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Plus, FolderOpen, Trash2, ChevronRight, Users } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { Project, ProjectMember, Profile } from '../types';
+import { Project } from '../types';
 import ProjectModal from '../components/modals/ProjectModal';
 import ProjectMembersModal from '../components/modals/ProjectMembersModal';
 import { useAuth } from '../context/AuthContext';

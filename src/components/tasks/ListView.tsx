@@ -13,29 +13,29 @@ interface Props {
   onSelectTask: (task: Task) => void;
   selectedTaskId?: string;
   filterProjectId?: string;
+  canAddTasks?: boolean;
 }
 
-function formatDate(d: string | null | undefined) {
+function formatDateTime(d: string | null | undefined) {
   if (!d) return '';
-  return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', d: undefined, day: 'numeric', year: 'numeric' });
+  const date = new Date(d);
+  if (isNaN(date.getTime())) return '';
+  return date.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
-function formatDuration(start: string | null | undefined, end: string | null | undefined) {
-  if (!start || !end) return '';
-  const s = new Date(start + 'T00:00:00');
-  const e = new Date(end + 'T00:00:00');
-  const days = Math.round((e.getTime() - s.getTime()) / 86400000);
-  if (days <= 0) return '1 Day';
-  return `${days} Day${days !== 1 ? 's' : ''}`;
-}
-
-export default function ListView({ projects, tasks, onRefresh, onSelectTask, selectedTaskId, filterProjectId }: Props) {
+export default function ListView({ projects, tasks, onRefresh, onSelectTask, selectedTaskId, filterProjectId, canAddTasks: canAddFromProps }: Props) {
   const { user, profile } = useAuth();
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [addingTaskFor, setAddingTaskFor] = useState<string | null>(null);
   const [addingSubtaskFor, setAddingSubtaskFor] = useState<string | null>(null);
 
-  const canEdit = profile?.role === 'admin' || profile?.role === 'manager';
+  const canEdit = profile?.role === 'admin' || profile?.role === 'manager' || canAddFromProps;
 
   const visibleProjects = filterProjectId
     ? projects.filter(p => p.id === filterProjectId)
@@ -105,11 +105,11 @@ export default function ListView({ projects, tasks, onRefresh, onSelectTask, sel
                       <th className="text-left text-xs font-semibold text-gray-500 px-4 py-2.5 w-8"></th>
                       <th className="text-left text-xs font-semibold text-gray-500 px-4 py-2.5">Main Task</th>
                       <th className="text-left text-xs font-semibold text-gray-500 px-4 py-2.5 w-28">Status</th>
-                      <th className="text-left text-xs font-semibold text-gray-500 px-4 py-2.5 w-32">Planned Start</th>
-                      <th className="text-left text-xs font-semibold text-gray-500 px-4 py-2.5 w-32">Planned End</th>
-                      <th className="text-left text-xs font-semibold text-gray-500 px-4 py-2.5 w-32">Actual Start</th>
-                      <th className="text-left text-xs font-semibold text-gray-500 px-4 py-2.5 w-32">Actual End</th>
-                      <th className="text-left text-xs font-semibold text-gray-500 px-4 py-2.5 w-24"># Of Hrs</th>
+                      <th className="text-left text-xs font-semibold text-gray-500 px-4 py-2.5 w-40">Planned Start</th>
+                      <th className="text-left text-xs font-semibold text-gray-500 px-4 py-2.5 w-40">Planned End</th>
+                      <th className="text-left text-xs font-semibold text-gray-500 px-4 py-2.5 w-40">Actual Start</th>
+                      <th className="text-left text-xs font-semibold text-gray-500 px-4 py-2.5 w-40">Actual End</th>
+                      <th className="text-left text-xs font-semibold text-gray-500 px-4 py-2.5 w-24">Hours</th>
                       <th className="w-16"></th>
                     </tr>
                   </thead>
@@ -148,12 +148,12 @@ export default function ListView({ projects, tasks, onRefresh, onSelectTask, sel
                               </div>
                             </td>
                             <td className="px-4 py-2.5"><TaskStatusBadge status={task.status} /></td>
-                            <td className="px-4 py-2.5 text-xs text-gray-600">{formatDate(task.planned_start)}</td>
-                            <td className="px-4 py-2.5 text-xs text-gray-600">{formatDate(task.planned_end)}</td>
-                            <td className="px-4 py-2.5 text-xs text-gray-600">{formatDate(task.actual_start)}</td>
-                            <td className="px-4 py-2.5 text-xs text-gray-600">{formatDate(task.actual_end)}</td>
-                            <td className="px-4 py-2.5 text-xs text-gray-600">
-                              {task.estimated_hours ? `${task.estimated_hours}h` : formatDuration(task.planned_start, task.planned_end)}
+                            <td className="px-4 py-2.5 text-xs text-gray-600">{formatDateTime(task.planned_start)}</td>
+                            <td className="px-4 py-2.5 text-xs text-gray-600">{formatDateTime(task.planned_end)}</td>
+                            <td className="px-4 py-2.5 text-xs text-gray-600">{formatDateTime(task.actual_start)}</td>
+                            <td className="px-4 py-2.5 text-xs text-gray-600">{formatDateTime(task.actual_end)}</td>
+                            <td className="px-4 py-2.5 text-xs text-gray-600 font-medium">
+                              {task.estimated_hours ? `${task.estimated_hours}h` : '—'}
                             </td>
                             <td className="px-4 py-2.5">
                               {canEdit && (
@@ -179,11 +179,11 @@ export default function ListView({ projects, tasks, onRefresh, onSelectTask, sel
                                           <th className="w-12"></th>
                                           <th className="text-left text-xs font-semibold text-gray-400 px-4 py-2">Sub Task</th>
                                           <th className="text-left text-xs font-semibold text-gray-400 px-4 py-2 w-28">Status</th>
-                                          <th className="text-left text-xs font-semibold text-gray-400 px-4 py-2 w-32">Planned Start</th>
-                                          <th className="text-left text-xs font-semibold text-gray-400 px-4 py-2 w-32">Planned End</th>
-                                          <th className="text-left text-xs font-semibold text-gray-400 px-4 py-2 w-32">Actual Start</th>
-                                          <th className="text-left text-xs font-semibold text-gray-400 px-4 py-2 w-32">Actual End</th>
-                                          <th className="text-left text-xs font-semibold text-gray-400 px-4 py-2 w-24"># Of Hrs</th>
+                                          <th className="text-left text-xs font-semibold text-gray-400 px-4 py-2 w-40">Planned Start</th>
+                                          <th className="text-left text-xs font-semibold text-gray-400 px-4 py-2 w-40">Planned End</th>
+                                          <th className="text-left text-xs font-semibold text-gray-400 px-4 py-2 w-40">Actual Start</th>
+                                          <th className="text-left text-xs font-semibold text-gray-400 px-4 py-2 w-40">Actual End</th>
+                                          <th className="text-left text-xs font-semibold text-gray-400 px-4 py-2 w-24">Hours</th>
                                           <th className="w-16"></th>
                                         </tr>
                                       </thead>
@@ -197,12 +197,12 @@ export default function ListView({ projects, tasks, onRefresh, onSelectTask, sel
                                             <td className="pl-8 pr-4 py-2"></td>
                                             <td className="px-4 py-2 text-sm text-gray-700">{sub.title}</td>
                                             <td className="px-4 py-2"><TaskStatusBadge status={sub.status} /></td>
-                                            <td className="px-4 py-2 text-xs text-gray-600">{formatDate(sub.planned_start)}</td>
-                                            <td className="px-4 py-2 text-xs text-gray-600">{formatDate(sub.planned_end)}</td>
-                                            <td className="px-4 py-2 text-xs text-gray-600">{formatDate(sub.actual_start)}</td>
-                                            <td className="px-4 py-2 text-xs text-gray-600">{formatDate(sub.actual_end)}</td>
-                                            <td className="px-4 py-2 text-xs text-gray-600">
-                                              {sub.estimated_hours ? `${sub.estimated_hours}h` : formatDuration(sub.planned_start, sub.planned_end)}
+                                            <td className="px-4 py-2 text-xs text-gray-600">{formatDateTime(sub.planned_start)}</td>
+                                            <td className="px-4 py-2 text-xs text-gray-600">{formatDateTime(sub.planned_end)}</td>
+                                            <td className="px-4 py-2 text-xs text-gray-600">{formatDateTime(sub.actual_start)}</td>
+                                            <td className="px-4 py-2 text-xs text-gray-600">{formatDateTime(sub.actual_end)}</td>
+                                            <td className="px-4 py-2 text-xs text-gray-600 font-medium">
+                                              {sub.estimated_hours ? `${sub.estimated_hours}h` : '—'}
                                             </td>
                                             <td className="px-4 py-2">
                                               {canEdit && (

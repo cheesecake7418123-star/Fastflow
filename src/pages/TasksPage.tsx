@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { LayoutGrid, List, BarChart2, Plus, Search, Filter } from 'lucide-react';
+import { LayoutGrid, List, BarChart2, Plus, Search, Filter, Upload } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Task, Project, ViewMode } from '../types';
 import ListView from '../components/tasks/ListView';
@@ -7,6 +7,7 @@ import BoardView from '../components/tasks/BoardView';
 import GanttView from '../components/tasks/GanttView';
 import TaskDetailPanel from '../components/tasks/TaskDetailPanel';
 import AddTaskModal from '../components/tasks/AddTaskModal';
+import TaskImportModal from '../components/tasks/TaskImportModal';
 import { useAuth } from '../context/AuthContext';
 
 interface Props {
@@ -16,14 +17,17 @@ interface Props {
 }
 
 export default function TasksPage({ projects, filterProjectId, onProjectIdChange }: Props) {
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
   const [view, setView] = useState<ViewMode>('list');
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [search, setSearch] = useState('');
+  const [projectMemberIds, setProjectMemberIds] = useState<Set<string>>(new Set());
 
+  // Check if user can create tasks (admin, manager, or project member)
   const canCreate = profile?.role === 'admin' || profile?.role === 'manager';
 
   async function loadTasks() {
@@ -35,6 +39,23 @@ export default function TasksPage({ projects, filterProjectId, onProjectIdChange
     setTasks(data ?? []);
     setLoading(false);
   }
+
+  // Load project members for the active project to check permissions
+  useEffect(() => {
+    async function loadMembers() {
+      if (!filterProjectId || !user) return;
+      const { data } = await supabase
+        .from('project_members')
+        .select('user_id')
+        .eq('project_id', filterProjectId);
+      const memberIds = new Set((data || []).map(m => m.user_id));
+      // Also include project creator
+      const project = projects.find(p => p.id === filterProjectId);
+      if (project?.created_by) memberIds.add(project.created_by);
+      setProjectMemberIds(memberIds);
+    }
+    loadMembers();
+  }, [filterProjectId, user, projects]);
 
   useEffect(() => { loadTasks(); }, []);
 
@@ -58,6 +79,9 @@ export default function TasksPage({ projects, filterProjectId, onProjectIdChange
   }
 
   const activeProject = filterProjectId ? projects.find(p => p.id === filterProjectId) : null;
+
+  // User can add tasks if they're admin/manager, or if they're a member of the active project
+  const canAddTasks = canCreate || (filterProjectId && projectMemberIds.has(user?.id || ''));
 
   const viewButtons: { id: ViewMode; label: string; icon: typeof List }[] = [
     { id: 'list', label: 'List View', icon: List },
@@ -122,15 +146,25 @@ export default function TasksPage({ projects, filterProjectId, onProjectIdChange
               {activeProject?.name ?? 'All'}
             </div>
 
-            {/* Add task */}
-            {canCreate && (
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="ml-auto flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                Add New Task
-              </button>
+            {/* Add task and Import */}
+            {(canAddTasks || canCreate) && (
+              <div className="ml-auto flex items-center gap-2">
+                <button
+                  onClick={() => setShowImportModal(true)}
+                  className="flex items-center gap-2 px-3 py-2 border border-gray-200 hover:border-gray-300 bg-white text-gray-600 rounded-lg text-sm font-medium transition-colors"
+                  title="Import tasks from CSV"
+                >
+                  <Upload className="w-4 h-4" />
+                  Import
+                </button>
+                <button
+                  onClick={() => setShowAddModal(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add Task
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -151,6 +185,7 @@ export default function TasksPage({ projects, filterProjectId, onProjectIdChange
               onSelectTask={setSelectedTask}
               selectedTaskId={selectedTask?.id}
               filterProjectId={filterProjectId}
+              canAddTasks={canAddTasks || canCreate}
             />
           ) : view === 'board' ? (
             <BoardView
@@ -159,6 +194,7 @@ export default function TasksPage({ projects, filterProjectId, onProjectIdChange
               onRefresh={loadTasks}
               onSelectTask={setSelectedTask}
               filterProjectId={filterProjectId}
+              canEdit={canAddTasks || canCreate}
             />
           ) : (
             <GanttView
@@ -185,6 +221,15 @@ export default function TasksPage({ projects, filterProjectId, onProjectIdChange
           defaultProjectId={filterProjectId}
           onClose={() => setShowAddModal(false)}
           onCreated={loadTasks}
+        />
+      )}
+
+      {showImportModal && (
+        <TaskImportModal
+          projects={filterProjectId ? projects.filter(p => p.id === filterProjectId) : projects}
+          defaultProjectId={filterProjectId}
+          onClose={() => setShowImportModal(false)}
+          onImported={loadTasks}
         />
       )}
     </div>

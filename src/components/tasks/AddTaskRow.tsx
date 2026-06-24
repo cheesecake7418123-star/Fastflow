@@ -12,10 +12,15 @@ export default function AddTaskRow({ label, onSave, onCancel }: Props) {
   const [saving, setSaving] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { inputRef.current?.focus(); }, []);
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
 
   async function handleSave() {
-    if (!title.trim()) { onCancel(); return; }
+    if (!title.trim()) {
+      onCancel();
+      return;
+    }
     setSaving(true);
     await onSave(title.trim());
     setSaving(false);

@@ -1,4 +1,3 @@
-import { useMemo } from 'react';
 import { Task, Project } from '../../types';
 
 interface Props {
@@ -38,14 +37,9 @@ function formatMonthYear(d: Date) {
   return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 }
 
-function formatDayLabel(d: Date) {
-  const day = d.toLocaleDateString('en-US', { weekday: 'short' });
-  return `${day} ${d.getDate()}`;
-}
-
 function parseDate(s: string | null | undefined): Date | null {
   if (!s) return null;
-  const d = new Date(s + 'T00:00:00');
+  const d = new Date(s); // Already ISO timestamp
   return isNaN(d.getTime()) ? null : d;
 }
 
@@ -81,27 +75,6 @@ export default function GanttView({ projects, tasks, filterProjectId }: Props) {
     const left = Math.max(0, startOffset) * CELL_W;
     const width = Math.max(1, Math.min(endOffset, NUM_DAYS) - Math.max(0, startOffset)) * CELL_W - 4;
     return { left, width };
-  }
-
-  // Group by week for header
-  const weeks = useMemo(() => {
-    const result: { label: string; days: Date[] }[] = [];
-    let current: { label: string; days: Date[] } | null = null;
-    days.forEach(d => {
-      const wLabel = `Week ${getWeekNumber(d)}`;
-      if (!current || current.label !== wLabel) {
-        current = { label: wLabel, days: [d] };
-        result.push(current);
-      } else {
-        current.days.push(d);
-      }
-    });
-    return result;
-  }, []);
-
-  function getWeekNumber(d: Date) {
-    const onejan = new Date(d.getFullYear(), 0, 1);
-    return Math.ceil(((d.getTime() - onejan.getTime()) / 86400000 + onejan.getDay() + 1) / 7);
   }
 
   // Flatten rows: project header, main task, then subtasks
@@ -188,10 +161,10 @@ export default function GanttView({ projects, tasks, filterProjectId }: Props) {
             const { task, depth } = row;
             const bar = getBarStyle(task);
             const startLabel = task.planned_start
-              ? new Date(task.planned_start + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+              ? new Date(task.planned_start).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })
               : '';
             const endLabel = task.planned_end
-              ? new Date(task.planned_end + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+              ? new Date(task.planned_end).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })
               : '';
 
             return (

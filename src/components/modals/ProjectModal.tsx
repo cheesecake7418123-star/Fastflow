@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, UserPlus, User as UserIcon, Trash2 } from 'lucide-react';
+import { X, UserPlus, User as UserIcon } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { Profile } from '../../types';

@@ -11,9 +11,25 @@ interface Props {
   onUpdate: () => void;
 }
 
-function formatDate(d: string | null | undefined) {
+function formatDateTime(d: string | null | undefined) {
   if (!d) return '—';
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const date = new Date(d);
+  if (isNaN(date.getTime())) return '—';
+  return date.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function toDatetimeLocal(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function timeAgo(d: string) {
@@ -26,8 +42,18 @@ function timeAgo(d: string) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
+function calculateHours(start: string | null | undefined, end: string | null | undefined): number | null {
+  if (!start || !end) return null;
+  const startDate = new Date(start);
+  const endDate = new Date(end);
+  if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) return null;
+  const diffMs = endDate.getTime() - startDate.getTime();
+  if (diffMs <= 0) return null;
+  return Math.round((diffMs / 3600000) * 10) / 10;
+}
+
 export default function TaskDetailPanel({ task, onClose, onUpdate }: Props) {
-  const { user, profile } = useAuth();
+  const { user } = useAuth();
   const [tab, setTab] = useState<'messages' | 'history'>('messages');
   const [messages, setMessages] = useState<TaskMessage[]>([]);
   const [history, setHistory] = useState<TaskHistory[]>([]);
@@ -78,7 +104,19 @@ export default function TaskDetailPanel({ task, onClose, onUpdate }: Props) {
 
   async function saveField(field: string, value: string) {
     const oldVal = (task as any)[field];
-    await supabase.from('tasks').update({ [field]: value || null, updated_at: new Date().toISOString() }).eq('id', task.id);
+    const updateData: Record<string, any> = { [field]: value || null, updated_at: new Date().toISOString() };
+
+    // Auto-calculate hours when saving date fields
+    if (field === 'planned_start' || field === 'planned_end') {
+      const start = (field === 'planned_start' ? value : task.planned_start) ?? undefined;
+      const end = (field === 'planned_end' ? value : task.planned_end) ?? undefined;
+      const hours = calculateHours(start, end);
+      if (hours !== null) {
+        updateData.estimated_hours = hours;
+      }
+    }
+
+    await supabase.from('tasks').update(updateData).eq('id', task.id);
     await supabase.from('task_history').insert({
       task_id: task.id,
       user_id: user!.id,
@@ -92,13 +130,16 @@ export default function TaskDetailPanel({ task, onClose, onUpdate }: Props) {
   }
 
   const infoRows = [
-    { label: 'Status', key: 'status', type: 'status' },
-    { label: 'Planned Start', key: 'planned_start', type: 'date' },
-    { label: 'Planned End', key: 'planned_end', type: 'date' },
-    { label: 'Actual Start', key: 'actual_start', type: 'date' },
-    { label: 'Actual End', key: 'actual_end', type: 'date' },
-    { label: 'Est. Hours', key: 'estimated_hours', type: 'number' },
+    { label: 'Status', key: 'status', type: 'status' as const },
+    { label: 'Planned Start', key: 'planned_start', type: 'datetime' as const },
+    { label: 'Planned End', key: 'planned_end', type: 'datetime' as const },
+    { label: 'Actual Start', key: 'actual_start', type: 'datetime' as const },
+    { label: 'Actual End', key: 'actual_end', type: 'datetime' as const },
+    { label: 'Est. Hours', key: 'estimated_hours', type: 'number' as const },
   ];
+
+  // Calculate auto-hours for display
+  const autoHours = calculateHours(task.planned_start ?? undefined, task.planned_end ?? undefined);
 
   return (
     <div className="w-96 flex-shrink-0 border-l border-gray-200 bg-white flex flex-col h-full">
@@ -136,9 +177,9 @@ export default function TaskDetailPanel({ task, onClose, onUpdate }: Props) {
                         <option value="done">Done</option>
                         <option value="hold">Hold</option>
                       </select>
-                    ) : type === 'date' ? (
+                    ) : type === 'datetime' ? (
                       <input
-                        type="date"
+                        type="datetime-local"
                         value={fieldValue}
                         onChange={e => setFieldValue(e.target.value)}
                         className="text-xs border border-gray-200 rounded px-2 py-1 flex-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -148,6 +189,8 @@ export default function TaskDetailPanel({ task, onClose, onUpdate }: Props) {
                         type="number"
                         value={fieldValue}
                         onChange={e => setFieldValue(e.target.value)}
+                        step="0.5"
+                        min="0"
                         className="text-xs border border-gray-200 rounded px-2 py-1 flex-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
                       />
                     )}
@@ -156,17 +199,27 @@ export default function TaskDetailPanel({ task, onClose, onUpdate }: Props) {
                   </div>
                 ) : (
                   <button
-                    onClick={() => { setEditingField(key); setFieldValue(val ?? ''); }}
+                    onClick={() => { setEditingField(key); setFieldValue(type === 'datetime' ? toDatetimeLocal(val) : (val ?? '')); }}
                     className="text-xs flex-1 text-right hover:text-blue-600 transition-colors"
                   >
-                    {type === 'status' ? <TaskStatusBadge status={val} /> : (
-                      <span className="text-gray-700">{type === 'date' ? formatDate(val) : (val ?? '—')}</span>
+                    {type === 'status' ? (
+                      <TaskStatusBadge status={val} />
+                    ) : type === 'datetime' ? (
+                      <span className="text-gray-700">{formatDateTime(val)}</span>
+                    ) : (
+                      <span className="text-gray-700">{val ?? '—'}</span>
                     )}
                   </button>
                 )}
               </div>
             );
           })}
+          {autoHours !== null && (
+            <div className="flex items-center gap-1.5 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded mt-2">
+              <Clock className="w-3 h-3" />
+              Auto: {autoHours} hours from planned dates
+            </div>
+          )}
         </div>
       </div>
 
