@@ -4,19 +4,12 @@ import { useAuth } from '../context/AuthContext';
 
 type Mode = 'login' | 'register';
 
-const ROLES = [
-  { value: 'admin', label: 'Admin', desc: 'Full system access' },
-  { value: 'manager', label: 'Manager', desc: 'Manage projects & tasks' },
-  { value: 'user', label: 'User', desc: 'View & update assigned tasks' },
-];
-
 export default function AuthPage() {
   const { signIn, signUp } = useAuth();
   const [mode, setMode] = useState<Mode>('login');
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState('user');
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -30,7 +23,7 @@ export default function AuthPage() {
       if (error) setError(error.message);
     } else {
       if (!fullName.trim()) { setError('Full name is required'); setLoading(false); return; }
-      const { error } = await signUp(email, password, fullName, role);
+      const { error } = await signUp(email, password, fullName, 'user');
       if (error) {
         if (error.message.includes('already registered') || error.message.includes('already been registered')) {
           setError('This email is already registered. Please sign in instead.');
@@ -125,34 +118,6 @@ export default function AuthPage() {
               </div>
             </div>
 
-            {mode === 'register' && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Role</label>
-                <div className="space-y-2">
-                  {ROLES.map(r => (
-                    <label
-                      key={r.value}
-                      className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                        role === r.value ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="role"
-                        value={r.value}
-                        checked={role === r.value}
-                        onChange={() => setRole(r.value)}
-                        className="accent-blue-500"
-                      />
-                      <div>
-                        <div className="text-sm font-medium text-gray-800">{r.label}</div>
-                        <div className="text-xs text-gray-500">{r.desc}</div>
-                      </div>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            )}
 
             {error && (
               <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">

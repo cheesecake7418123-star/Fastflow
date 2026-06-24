@@ -17,12 +17,14 @@ interface SidebarProps {
   onRefreshProjects: () => void;
 }
 
+interface MenuPos { x: number; y: number; projectId: string }
+
 export default function Sidebar({
   activePage, onNavigate, projects, activeProjectId, onAddProject, onRefreshProjects,
 }: SidebarProps) {
   const { profile, user, signOut } = useAuth();
   const [projectsOpen, setProjectsOpen] = useState(true);
-  const [menuProjectId, setMenuProjectId] = useState<string | null>(null);
+  const [menuPos, setMenuPos] = useState<MenuPos | null>(null);
   const [managingProject, setManagingProject] = useState<Project | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -31,16 +33,23 @@ export default function Sidebar({
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuProjectId(null);
+        setMenuPos(null);
       }
     }
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
+  function openMenu(e: React.MouseEvent<HTMLButtonElement>, projectId: string) {
+    e.stopPropagation();
+    if (menuPos?.projectId === projectId) { setMenuPos(null); return; }
+    const rect = e.currentTarget.getBoundingClientRect();
+    setMenuPos({ x: rect.right + 8, y: rect.top, projectId });
+  }
+
   async function deleteProject(id: string) {
     if (!confirm('Delete this project and all its tasks?')) return;
-    setMenuProjectId(null);
+    setMenuPos(null);
     await supabase.from('projects').delete().eq('id', id);
     onRefreshProjects();
   }
@@ -64,6 +73,8 @@ export default function Sidebar({
     { id: 'projects', label: 'Projects', icon: FolderOpen },
     { id: 'tasks', label: 'All Tasks', icon: CheckSquare },
   ];
+
+  const activeMenuProject = menuPos ? projects.find(p => p.id === menuPos.projectId) : null;
 
   return (
     <>
@@ -129,7 +140,7 @@ export default function Sidebar({
           </div>
 
           {projectsOpen && (
-            <div className="space-y-0.5" ref={menuRef}>
+            <div className="space-y-0.5">
               {projects.map(p => {
                 const isActive = activeProjectId === p.id && activePage === 'tasks';
                 return (
@@ -149,36 +160,13 @@ export default function Sidebar({
                       <span className="flex-1 text-left truncate">{p.name}</span>
                       {canManageProject(p) && (
                         <button
-                          onClick={e => {
-                            e.stopPropagation();
-                            setMenuProjectId(menuProjectId === p.id ? null : p.id);
-                          }}
+                          onClick={e => openMenu(e, p.id)}
                           className="opacity-0 group-hover:opacity-100 p-0.5 rounded-md hover:bg-white/10 text-slate-500 hover:text-slate-300 transition-all"
                         >
                           <MoreHorizontal className="w-3.5 h-3.5" />
                         </button>
                       )}
                     </button>
-
-                    {menuProjectId === p.id && (
-                      <div className="absolute left-full top-0 ml-2 z-50 bg-white border border-gray-100 rounded-xl shadow-2xl py-1 w-44 overflow-hidden">
-                        <button
-                          onClick={() => { setMenuProjectId(null); setManagingProject(p); }}
-                          className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors"
-                        >
-                          <Users className="w-3.5 h-3.5" />
-                          Manage Members
-                        </button>
-                        <div className="h-px bg-gray-100 mx-2" />
-                        <button
-                          onClick={() => deleteProject(p.id)}
-                          className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          Delete Project
-                        </button>
-                      </div>
-                    )}
                   </div>
                 );
               })}
@@ -224,6 +212,31 @@ export default function Sidebar({
           </div>
         </div>
       </aside>
+
+      {/* Fixed-position project context menu (escapes sidebar overflow) */}
+      {menuPos && activeMenuProject && (
+        <div
+          ref={menuRef}
+          className="fixed z-50 bg-white border border-gray-100 rounded-xl shadow-2xl py-1 w-44 overflow-hidden"
+          style={{ left: menuPos.x, top: menuPos.y }}
+        >
+          <button
+            onClick={() => { setMenuPos(null); setManagingProject(activeMenuProject); }}
+            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+          >
+            <Users className="w-3.5 h-3.5" />
+            Manage Members
+          </button>
+          <div className="h-px bg-gray-100 mx-2" />
+          <button
+            onClick={() => deleteProject(activeMenuProject.id)}
+            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            Delete Project
+          </button>
+        </div>
+      )}
 
       {managingProject && (
         <ProjectMembersModal

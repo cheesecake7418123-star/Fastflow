@@ -11,17 +11,17 @@ interface Props {
   onUpdate: () => void;
 }
 
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
 function formatDateTime(d: string | null | undefined) {
   if (!d) return '—';
   const date = new Date(d);
   if (isNaN(date.getTime())) return '—';
-  return date.toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  const h = date.getHours();
+  const m = date.getMinutes().toString().padStart(2, '0');
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const hour = (h % 12 || 12).toString();
+  return `${MONTHS[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}, ${hour}:${m} ${ampm}`;
 }
 
 function toDatetimeLocal(iso: string | null | undefined): string {

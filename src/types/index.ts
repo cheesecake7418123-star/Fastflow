@@ -32,10 +32,20 @@ export interface ProjectMember {
   profile?: Profile;
 }
 
+export interface BoardColumn {
+  id: string;
+  project_id: string;
+  name: string;
+  color: string;
+  position: number;
+  created_at: string;
+}
+
 export interface Task {
   id: string;
   project_id: string;
   parent_task_id?: string | null;
+  board_column_id?: string | null;
   title: string;
   description?: string | null;
   status: TaskStatus;

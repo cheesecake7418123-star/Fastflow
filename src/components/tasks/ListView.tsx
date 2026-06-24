@@ -23,23 +23,31 @@ interface EditingCell {
   field: string;
 }
 
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
 function formatDateTime(d: string | null | undefined) {
   if (!d) return '';
   const date = new Date(d);
   if (isNaN(date.getTime())) return '';
-  return date.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const h = date.getHours();
+  const m = date.getMinutes().toString().padStart(2, '0');
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const hour = (h % 12 || 12).toString();
+  return `${MONTHS[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}, ${hour}:${m} ${ampm}`;
 }
+
+const pad = (n: number) => n.toString().padStart(2, '0');
 
 function toDatetimeLocal(iso: string | null | undefined): string {
   if (!iso) return '';
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '';
-  const pad = (n: number) => n.toString().padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function toISO(local: string): string | null {
   if (!local) return null;
+  // datetime-local strings (YYYY-MM-DDTHH:mm) are treated as local time by the browser
   const d = new Date(local);
   return isNaN(d.getTime()) ? null : d.toISOString();
 }
@@ -227,13 +235,15 @@ export default function ListView({
       updated_at: new Date().toISOString(),
     };
 
-    // Auto-recalculate hours when planned dates change
-    if (field === 'planned_start' || field === 'planned_end') {
+    // Auto-recalculate hours when planned or actual dates change
+    if (['planned_start', 'planned_end', 'actual_start', 'actual_end'].includes(field)) {
       const task = tasks.find(t => t.id === taskId);
       if (task) {
         const start = field === 'planned_start' ? (stored as string) : task.planned_start;
         const end = field === 'planned_end' ? (stored as string) : task.planned_end;
-        const hours = calcHours(start, end);
+        const aStart = field === 'actual_start' ? (stored as string) : task.actual_start;
+        const aEnd = field === 'actual_end' ? (stored as string) : task.actual_end;
+        const hours = calcHours(start, end) ?? calcHours(aStart, aEnd);
         if (hours !== null) updateData.estimated_hours = hours;
       }
     }
