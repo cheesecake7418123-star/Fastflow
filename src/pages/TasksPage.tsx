@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { LayoutGrid, List, BarChart2, Plus, Search, Filter, Upload } from 'lucide-react';
+import { LayoutGrid, List, BarChart2, Plus, Search, Upload } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Task, Project, ViewMode } from '../types';
 import ListView from '../components/tasks/ListView';
@@ -27,7 +27,6 @@ export default function TasksPage({ projects, filterProjectId, onProjectIdChange
   const [search, setSearch] = useState('');
   const [projectMemberIds, setProjectMemberIds] = useState<Set<string>>(new Set());
 
-  // Check if user can create tasks (admin, manager, or project member)
   const canCreate = profile?.role === 'admin' || profile?.role === 'manager';
 
   async function loadTasks() {
@@ -40,7 +39,6 @@ export default function TasksPage({ projects, filterProjectId, onProjectIdChange
     setLoading(false);
   }
 
-  // Load project members for the active project to check permissions
   useEffect(() => {
     async function loadMembers() {
       if (!filterProjectId || !user) return;
@@ -49,7 +47,6 @@ export default function TasksPage({ projects, filterProjectId, onProjectIdChange
         .select('user_id')
         .eq('project_id', filterProjectId);
       const memberIds = new Set((data || []).map(m => m.user_id));
-      // Also include project creator
       const project = projects.find(p => p.id === filterProjectId);
       if (project?.created_by) memberIds.add(project.created_by);
       setProjectMemberIds(memberIds);
@@ -59,7 +56,6 @@ export default function TasksPage({ projects, filterProjectId, onProjectIdChange
 
   useEffect(() => { loadTasks(); }, []);
 
-  // Filter tasks by project if active, then by search
   const filteredTasks = tasks.filter(t => {
     const matchesProject = filterProjectId ? t.project_id === filterProjectId : true;
     const matchesSearch = search.trim()
@@ -68,7 +64,6 @@ export default function TasksPage({ projects, filterProjectId, onProjectIdChange
     return matchesProject && matchesSearch;
   });
 
-  // When selectedTask data changes after update, refresh it
   function handleTaskUpdate() {
     loadTasks();
     if (selectedTask) {
@@ -79,38 +74,49 @@ export default function TasksPage({ projects, filterProjectId, onProjectIdChange
   }
 
   const activeProject = filterProjectId ? projects.find(p => p.id === filterProjectId) : null;
-
-  // User can add tasks if they're admin/manager, or if they're a member of the active project
   const canAddTasks = canCreate || (filterProjectId && projectMemberIds.has(user?.id || ''));
 
   const viewButtons: { id: ViewMode; label: string; icon: typeof List }[] = [
-    { id: 'list', label: 'List View', icon: List },
-    { id: 'board', label: 'Board View', icon: LayoutGrid },
-    { id: 'gantt', label: 'Gantt Chart', icon: BarChart2 },
+    { id: 'list', label: 'List', icon: List },
+    { id: 'board', label: 'Board', icon: LayoutGrid },
+    { id: 'gantt', label: 'Gantt', icon: BarChart2 },
   ];
 
   return (
-    <div className="flex flex-1 overflow-hidden">
+    <div className="flex flex-1 overflow-hidden" style={{ background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)' }}>
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top bar */}
-        <div className="px-6 py-4 border-b border-gray-200 bg-white flex-shrink-0">
-          <div className="flex items-center gap-1 text-sm text-gray-400 mb-3">
-            <button onClick={() => onProjectIdChange?.(undefined)} className="hover:text-blue-600 transition-colors">Home</button>
-            <span>/</span>
-            <span className="text-gray-700 font-medium">
-              {activeProject ? activeProject.name : 'Tasks'}
-            </span>
+        <div className="px-6 py-4 border-b border-gray-200/70 bg-white/80 backdrop-blur-sm flex-shrink-0">
+          {/* Breadcrumb */}
+          <div className="flex items-center gap-1.5 text-xs text-gray-400 mb-3">
+            <button
+              onClick={() => onProjectIdChange?.(undefined)}
+              className="hover:text-blue-600 transition-colors font-medium"
+            >
+              Tasks
+            </button>
+            {activeProject && (
+              <>
+                <span>/</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: activeProject.color }} />
+                  <span className="text-gray-700 font-semibold">{activeProject.name}</span>
+                </div>
+              </>
+            )}
           </div>
 
           <div className="flex items-center gap-3 flex-wrap">
             {/* View toggles */}
-            <div className="flex items-center bg-gray-100 rounded-lg p-1 gap-0.5">
+            <div className="flex items-center bg-gray-100 rounded-xl p-1 gap-0.5">
               {viewButtons.map(({ id, label, icon: Icon }) => (
                 <button
                   key={id}
                   onClick={() => setView(id)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                    view === id ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'
+                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    view === id
+                      ? 'bg-white shadow-sm text-gray-900'
+                      : 'text-gray-500 hover:text-gray-700'
                   }`}
                 >
                   <Icon className="w-3.5 h-3.5" />
@@ -120,8 +126,8 @@ export default function TasksPage({ projects, filterProjectId, onProjectIdChange
             </div>
 
             {/* Search */}
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-lg text-gray-500 hover:bg-gray-200 transition-colors">
-              <Search className="w-3.5 h-3.5" />
+            <div className="flex items-center gap-2 px-3.5 py-2 bg-gray-100 rounded-xl text-gray-400 hover:bg-gray-200/70 transition-colors border border-transparent focus-within:border-blue-300 focus-within:bg-white">
+              <Search className="w-3.5 h-3.5 flex-shrink-0" />
               <input
                 value={search}
                 onChange={e => setSearch(e.target.value)}
@@ -134,34 +140,28 @@ export default function TasksPage({ projects, filterProjectId, onProjectIdChange
             {!filterProjectId && projects.length > 0 && (
               <select
                 onChange={e => onProjectIdChange?.(e.target.value || undefined)}
-                className="px-3 py-1.5 bg-gray-100 text-xs text-gray-600 rounded-lg border-none focus:outline-none focus:ring-2 focus:ring-blue-500 hover:bg-gray-200"
+                className="px-3 py-2 bg-gray-100 text-xs text-gray-600 rounded-xl border-none focus:outline-none focus:ring-2 focus:ring-blue-400/40 hover:bg-gray-200/70 transition-colors cursor-pointer"
               >
                 <option value="">All Projects</option>
                 {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             )}
 
-            <div className="flex items-center gap-1 text-xs text-gray-400">
-              <Filter className="w-3.5 h-3.5" />
-              {activeProject?.name ?? 'All'}
-            </div>
-
-            {/* Add task and Import */}
+            {/* Actions */}
             {(canAddTasks || canCreate) && (
               <div className="ml-auto flex items-center gap-2">
                 <button
                   onClick={() => setShowImportModal(true)}
-                  className="flex items-center gap-2 px-3 py-2 border border-gray-200 hover:border-gray-300 bg-white text-gray-600 rounded-lg text-sm font-medium transition-colors"
-                  title="Import tasks from CSV"
+                  className="flex items-center gap-2 px-3.5 py-2 border border-gray-200 hover:border-gray-300 bg-white text-gray-600 rounded-xl text-xs font-semibold transition-all hover:shadow-sm"
                 >
-                  <Upload className="w-4 h-4" />
-                  Import
+                  <Upload className="w-3.5 h-3.5" />
+                  Import CSV
                 </button>
                 <button
                   onClick={() => setShowAddModal(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold transition-all shadow-sm shadow-blue-500/25 hover:shadow-blue-500/40"
                 >
-                  <Plus className="w-4 h-4" />
+                  <Plus className="w-3.5 h-3.5" />
                   Add Task
                 </button>
               </div>
@@ -169,12 +169,12 @@ export default function TasksPage({ projects, filterProjectId, onProjectIdChange
           </div>
         </div>
 
-        {/* Main content */}
+        {/* Content */}
         <div className="flex-1 overflow-y-auto px-6 py-5">
           {loading ? (
             <div className="space-y-4">
               {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="bg-white rounded-xl h-32 animate-pulse" />
+                <div key={i} className="bg-white rounded-2xl h-32 animate-pulse shadow-sm" />
               ))}
             </div>
           ) : view === 'list' ? (
@@ -206,7 +206,6 @@ export default function TasksPage({ projects, filterProjectId, onProjectIdChange
         </div>
       </div>
 
-      {/* Task detail side panel */}
       {selectedTask && (
         <TaskDetailPanel
           task={selectedTask}
