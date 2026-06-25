@@ -76,6 +76,7 @@ export interface Task {
   estimated_hours?: number | null;
   assigned_to?: string | null;
   created_by: string;
+  updated_by?: string | null;
   position: number;
   is_deleted: boolean;
   is_active: boolean;
@@ -84,6 +85,7 @@ export interface Task {
   subtasks?: Task[];
   assignee?: Profile | null;
   creator?: Profile | null;
+  updater?: Profile | null;
 }
 
 export interface TaskMessage {
