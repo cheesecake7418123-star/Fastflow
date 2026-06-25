@@ -1,8 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { CheckSquare, FolderOpen, TrendingUp, CheckCircle, PauseCircle, Circle, ArrowRight } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { Task, Project } from '../types';
+import { queryKeys } from '../lib/queryClient';
+import { filterVisibleProjects } from '../lib/projectAccess';
 
 interface Stats {
   totalProjects: number;
@@ -15,30 +18,68 @@ interface Stats {
 
 export default function Dashboard({ onNavigate }: { onNavigate: (page: string, id?: string) => void }) {
   const { profile } = useAuth();
-  const [stats, setStats] = useState<Stats>({ totalProjects: 0, totalTasks: 0, doneTasks: 0, doingTasks: 0, holdTasks: 0, todoTasks: 0 });
-  const [recentTasks, setRecentTasks] = useState<(Task & { project?: Project })[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    async function load() {
-      const [{ data: projects }, { data: tasks }] = await Promise.all([
-        supabase.from('projects').select('*'),
-        supabase.from('tasks').select('*, project:projects(id,name,color)').order('created_at', { ascending: false }),
+  const projectsQuery = useQuery({
+    queryKey: [...queryKeys.dashboard, profile?.id ?? 'anon', profile?.department_id ?? 'none', profile?.role ?? 'unknown'],
+    enabled: !!profile,
+    queryFn: async () => {
+      const [{ data: projects }, { data: memberRows }] = await Promise.all([
+        supabase
+          .from('projects')
+          .select('*')
+          .eq('is_deleted', false)
+          .eq('status', true),
+        supabase
+          .from('project_members')
+          .select('project_id')
+          .eq('user_id', profile!.id),
       ]);
-      const allTasks = tasks ?? [];
-      setStats({
-        totalProjects: (projects ?? []).length,
-        totalTasks: allTasks.length,
-        doneTasks: allTasks.filter(t => t.status === 'done').length,
-        doingTasks: allTasks.filter(t => t.status === 'doing').length,
-        holdTasks: allTasks.filter(t => t.status === 'hold').length,
-        todoTasks: allTasks.filter(t => t.status === 'todo').length,
-      });
-      setRecentTasks(allTasks.slice(0, 8));
-      setLoading(false);
-    }
-    load();
-  }, []);
+      const memberProjectIds = new Set((memberRows ?? []).map(row => row.project_id));
+      return filterVisibleProjects(profile, (projects ?? []) as Project[], memberProjectIds);
+    },
+  });
+
+  const tasksQuery = useQuery({
+    queryKey: [...queryKeys.dashboard, 'tasks', profile?.id ?? 'anon', profile?.department_id ?? 'none', profile?.role ?? 'unknown'],
+    enabled: !!profile,
+    queryFn: async () => {
+      const [{ data: projects }, { data: memberRows }, { data: tasks }] = await Promise.all([
+        supabase
+          .from('projects')
+          .select('*')
+          .eq('is_deleted', false)
+          .eq('status', true),
+        supabase
+          .from('project_members')
+          .select('project_id')
+          .eq('user_id', profile!.id),
+        supabase
+          .from('tasks')
+          .select('*, project:projects(id,name,color)')
+          .eq('is_deleted', false)
+          .eq('is_active', true)
+          .order('created_at', { ascending: false }),
+      ]);
+      const memberProjectIds = new Set((memberRows ?? []).map(row => row.project_id));
+      const visibleProjects = filterVisibleProjects(profile, (projects ?? []) as Project[], memberProjectIds);
+      const visibleProjectIds = new Set(visibleProjects.map(project => project.id));
+      return ((tasks ?? []) as (Task & { project?: Project })[]).filter(task => visibleProjectIds.has(task.project_id));
+    },
+  });
+
+  const stats = useMemo<Stats>(() => {
+    const allTasks = tasksQuery.data ?? [];
+    return {
+      totalProjects: projectsQuery.data?.length ?? 0,
+      totalTasks: allTasks.length,
+      doneTasks: allTasks.filter(t => t.status === 'done').length,
+      doingTasks: allTasks.filter(t => t.status === 'doing').length,
+      holdTasks: allTasks.filter(t => t.status === 'hold').length,
+      todoTasks: allTasks.filter(t => t.status === 'todo').length,
+    };
+  }, [projectsQuery.data, tasksQuery.data]);
+
+  const recentTasks = useMemo(() => (tasksQuery.data ?? []).slice(0, 8), [tasksQuery.data]);
+  const loading = projectsQuery.isLoading || tasksQuery.isLoading;
 
   const donePercent = stats.totalTasks > 0 ? Math.round((stats.doneTasks / stats.totalTasks) * 100) : 0;
 

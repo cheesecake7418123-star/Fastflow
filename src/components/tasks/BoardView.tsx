@@ -5,12 +5,13 @@ import { useAuth } from '../../context/AuthContext';
 import { Calendar, Clock, Trash2, Plus, X, Check } from 'lucide-react';
 
 interface Props {
-  projects: Project[];
+  projects: Project[]; 
   tasks: Task[];
   onRefresh: () => void;
   onSelectTask: (task: Task) => void;
   filterProjectId?: string;
   canEdit?: boolean;
+  canEditTaskForProject: (projectId: string) => boolean;
 }
 
 const BUILT_IN: { status: TaskStatus; label: string; accent: string; bg: string; badge: string }[] = [
@@ -36,8 +37,16 @@ function formatDateTime(d: string | null | undefined) {
   return `${MONTHS[date.getMonth()]} ${date.getDate()}, ${(h % 12 || 12)}:${m} ${ampm}`;
 }
 
-export default function BoardView({ projects, tasks, onRefresh, onSelectTask, filterProjectId, canEdit: canEditProp }: Props) {
-  const { profile } = useAuth();
+export default function BoardView({
+  projects,
+  tasks,
+  onRefresh,
+  onSelectTask,
+  filterProjectId,
+  canEdit: canEditProp,
+  canEditTaskForProject,
+}: Props) {
+  const { user, profile } = useAuth();
   const canEdit = canEditProp || profile?.role === 'admin' || profile?.role === 'manager';
 
   const [customColumns, setCustomColumns] = useState<BoardColumn[]>([]);
@@ -59,26 +68,66 @@ export default function BoardView({ projects, tasks, onRefresh, onSelectTask, fi
       .then(({ data }) => setCustomColumns(data ?? []));
   }, [filterProjectId, projects.length]);
 
+  // Human-readable label for whichever column a task currently sits in,
+  // whether that's a built-in status column or a custom board column.
+  function columnLabel(task: Task): string {
+    if (task.board_column_id) {
+      const col = customColumns.find(c => c.id === task.board_column_id);
+      return col?.name ?? task.board_column_id;
+    }
+    const built = BUILT_IN.find(b => b.status === task.status);
+    return built?.label ?? task.status;
+  }
+
+  async function logHistory(taskId: string, fieldName: string, oldValue: string | null, newValue: string | null) {
+    if (!user) return;
+    await supabase.from('task_history').insert({
+      task_id: taskId,
+      user_id: user.id,
+      field_name: fieldName,
+      old_value: oldValue,
+      new_value: newValue,
+    });
+  }
+
   async function moveToBuiltIn(taskId: string, newStatus: TaskStatus) {
+    const task = tasks.find(t => t.id === taskId);
+    const oldLabel = task ? columnLabel(task) : null;
+    const newLabel = BUILT_IN.find(b => b.status === newStatus)?.label ?? newStatus;
+
     await supabase.from('tasks').update({
       status: newStatus,
       board_column_id: null,
       updated_at: new Date().toISOString(),
     }).eq('id', taskId);
+
+    if (oldLabel !== newLabel) {
+      await logHistory(taskId, 'status', oldLabel, newLabel);
+    }
+
     onRefresh();
   }
 
   async function moveToCustom(taskId: string, columnId: string) {
+    const task = tasks.find(t => t.id === taskId);
+    const oldLabel = task ? columnLabel(task) : null;
+    const newLabel = customColumns.find(c => c.id === columnId)?.name ?? columnId;
+
     await supabase.from('tasks').update({
       board_column_id: columnId,
       updated_at: new Date().toISOString(),
     }).eq('id', taskId);
+
+    if (oldLabel !== newLabel) {
+      await logHistory(taskId, 'board_column', oldLabel, newLabel);
+    }
+
     onRefresh();
   }
 
   async function deleteTask(id: string) {
     if (!confirm('Delete this task?')) return;
-    await supabase.from('tasks').delete().eq('id', id);
+    await supabase.from('tasks').update({ is_deleted: true, is_active: false, updated_at: new Date().toISOString() }).eq('id', id);
     onRefresh();
   }
 
@@ -99,7 +148,7 @@ export default function BoardView({ projects, tasks, onRefresh, onSelectTask, fi
 
   async function deleteColumn(id: string) {
     if (!confirm('Delete this column? Tasks in it will be moved to To Do.')) return;
-    await supabase.from('tasks').update({ board_column_id: null, status: 'todo' }).eq('board_column_id', id);
+    await supabase.from('tasks').update({ board_column_id: null, status: 'todo', updated_at: new Date().toISOString() }).eq('board_column_id', id);
     await supabase.from('board_columns').delete().eq('id', id);
     setCustomColumns(prev => prev.filter(c => c.id !== id));
     onRefresh();
@@ -123,16 +172,20 @@ export default function BoardView({ projects, tasks, onRefresh, onSelectTask, fi
   function TaskCard({ task }: { task: Task }) {
     const project = projects.find(p => p.id === task.project_id);
     const subtaskCount = tasks.filter(t => t.parent_task_id === task.id).length;
+    const canEditTask = canEditTaskForProject(task.project_id) || canEdit;
     return (
       <div
-        draggable={canEdit}
-        onDragStart={e => e.dataTransfer.setData('taskId', task.id)}
+        draggable={canEditTask}
+        onDragStart={e => {
+          if (!canEditTask) return;
+          e.dataTransfer.setData('taskId', task.id);
+        }}
         onClick={() => onSelectTask(task)}
         className="bg-white rounded-xl p-4 border border-gray-100/80 shadow-sm hover:shadow-md cursor-pointer transition-all hover:border-blue-200/60 hover:-translate-y-px group"
       >
         <div className="flex items-start justify-between gap-2 mb-3">
           <p className="text-sm font-medium text-gray-800 leading-snug">{task.title}</p>
-          {canEdit && (
+          {canEditTask && (
             <button
               onClick={e => { e.stopPropagation(); deleteTask(task.id); }}
               className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-gray-300 hover:text-red-500 hover:bg-red-50 transition-all flex-shrink-0"
@@ -173,7 +226,7 @@ export default function BoardView({ projects, tasks, onRefresh, onSelectTask, fi
           )}
         </div>
 
-        {canEdit && (
+        {canEditTask && (
           <div className="mt-3 pt-2.5 border-t border-gray-100 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
             {BUILT_IN.filter(s => s.status !== task.status || task.board_column_id)
               .slice(0, 2)
